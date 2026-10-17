@@ -15,7 +15,7 @@
     return items[Math.floor(random(run) * items.length)];
   }
 
-  function createMap(run, chapterIndex, theme) {
+  function createMap(run, chapterIndex, theme, retry = 0) {
     const layerCount = integer(run, balance.mapLayers.min, balance.mapLayers.max);
     const nodes = {};
     const start = { id: `c${chapterIndex + 1}-start`, type: "start", layer: -1, x: 50, y: 98, connections: [], visited: true, completed: true };
@@ -26,11 +26,12 @@
 
     function reserveLayers(type, count) {
       for (let index = 0; index < count; index += 1) {
-        const desired = Math.floor(((index + 1) * layerCount) / (count + 1));
+        const playableLayers = layerCount - 1;
+        const desired = Math.floor(((index + 1) * playableLayers) / (count + 1));
         let selected = -1;
-        for (let offset = 0; offset < layerCount; offset += 1) {
-          const forward = (desired + offset) % layerCount;
-          const backward = (desired - offset + layerCount) % layerCount;
+        for (let offset = 0; offset < playableLayers; offset += 1) {
+          const forward = (desired + offset) % playableLayers;
+          const backward = (desired - offset + playableLayers) % playableLayers;
           if (!reservedLayers.has(forward)) { selected = forward; break; }
           if (!reservedLayers.has(backward)) { selected = backward; break; }
         }
@@ -40,7 +41,6 @@
         }
       }
     }
-
     reserveLayers("elite", balance.mapSpecials.elites);
     reserveLayers("shop", balance.mapSpecials.shops);
     reserveLayers("event", balance.mapSpecials.events);
@@ -50,7 +50,7 @@
       if (!parent.connections.includes(child.id)) parent.connections.push(child.id);
     }
 
-    for (let layer = 0; layer < layerCount; layer += 1) {
+    for (let layer = 0; layer < layerCount - 1; layer += 1) {
       const count = integer(run, 2, 4);
       const slots = count === 2 ? [28, 72] : count === 3 ? [18, 50, 82] : [12, 37, 63, 88];
       const current = [];
@@ -85,11 +85,45 @@
       previous = current;
     }
 
+    const rest = {
+      id: `c${chapterIndex + 1}-rest`,
+      type: "rest",
+      layer: layerCount - 1,
+      x: 50,
+      y: 88 - (((layerCount - 1) / Math.max(1, layerCount - 1)) * 75),
+      connections: [],
+      visited: false,
+      completed: false
+    };
+    nodes[rest.id] = rest;
+    for (const node of previous) connect(node, rest);
+
     const bossPool = theme.chapterBosses || theme.bosses;
     const boss = { id: `c${chapterIndex + 1}-boss`, type: "boss", layer: layerCount, x: 50, y: 3, connections: [], visited: false, completed: false, enemyId: bossPool[chapterIndex] || pick(run, bossPool) };
     nodes[boss.id] = boss;
-    for (const node of previous) connect(node, boss);
-    return { seed: run.seed, generationState: run.rngState, layerCount, startId: start.id, bossId: boss.id, nodes };
+    connect(rest, boss);
+
+    const allNodes = Object.values(nodes);
+    const reachable = new Set([start.id]);
+    const queue = [start.id];
+    while (queue.length) {
+      const current = nodes[queue.shift()];
+      for (const nextId of current.connections) {
+        if (!reachable.has(nextId)) {
+          reachable.add(nextId);
+          queue.push(nextId);
+        }
+      }
+    }
+    const hasDeadEnd = allNodes.some((node) => node.id !== boss.id && node.connections.length === 0);
+    const overlaps = allNodes.some((node, index) => allNodes.slice(index + 1).some((other) =>
+      node.layer === other.layer && node.x === other.x
+    ));
+    if (reachable.size !== allNodes.length || !rest.connections.includes(boss.id) || boss.connections.length !== 0 || hasDeadEnd || overlaps) {
+      if (retry >= 5) throw new Error(`Unable to generate a valid chapter map: ${chapterIndex + 1}`);
+      return createMap(run, chapterIndex, theme, retry + 1);
+    }
+    return { seed: run.seed, generationState: run.rngState, layerCount, startId: start.id, restId: rest.id, bossId: boss.id, nodes };
   }
 
   function createRun(characterId, seed = Math.floor(Math.random() * 2147483647)) {
@@ -100,22 +134,23 @@
       chapterIndex: 0, chapters: [], currentNodeId: null, activeNodeId: null,
       phase: "map", hp: character.maxHp, maxHp: character.maxHp, gold: 0,
       deck: [...character.startingDeck],
-      relics: [], shops: {}, rewards: {}, events: {}, cardOrigins: [],
+      relics: [], shops: {}, rewards: {}, events: {}, eventHistory: [], cardOrigins: [],
       totalGoldEarned: 0, totalEnemiesDefeated: 0, totalCardsAdded: 0, totalRelicsFound: 0,
       pendingRemoval: null, result: null
     };
 
-    const remainingParts = [1, 2, 3, 4, 5, 6, 7].filter((part) => part !== character.originPart);
-    for (let index = remainingParts.length - 1; index > 0; index -= 1) {
-      const other = Math.floor(random(run) * (index + 1));
-      [remainingParts[index], remainingParts[other]] = [remainingParts[other], remainingParts[index]];
-    }
-    const selectedParts = [character.originPart, ...remainingParts.slice(0, 2)];
-
-    for (const part of selectedParts) {
+    const chapterParts = game.chapterParts[character.originPart] || [character.originPart, character.originPart, character.originPart];
+    for (const [index, part] of chapterParts.entries()) {
       const theme = game.themes[part];
       const chapterIndex = run.chapters.length;
-      run.chapters.push({ index: chapterIndex, part, theme, map: createMap(run, chapterIndex, theme), cleared: false });
+      run.chapters.push({
+        index: chapterIndex,
+        part,
+        theme,
+        setting: theme.chapterSettings?.[chapterIndex] || theme.setting,
+        map: createMap(run, chapterIndex, theme),
+        cleared: false
+      });
     }
     run.currentNodeId = run.chapters[0].map.startId;
     return run;
@@ -134,8 +169,10 @@
   }
 
   function getAvailableNodes(run) {
+    if (run.phase !== "map") return [];
     const map = currentChapter(run).map;
     const current = map.nodes[run.currentNodeId];
+    if (!current || !current.completed) return [];
     return current.connections.map((id) => map.nodes[id]).filter((node) => node && !node.completed);
   }
 
@@ -152,11 +189,17 @@
 
   function eligibleCards(run) {
     const character = game.characters.find((entry) => entry.id === run.characterId);
+    if (!character) return [];
+    const allowedOwners = new Set(["shared", character.id]);
     const counts = new Map();
-    for (const id of run.deck) counts.set(id, (counts.get(id) || 0) + 1);
+    for (const id of run.deck) {
+      const card = game.cards[id];
+      const baseId = card?.baseId || id;
+      counts.set(baseId, (counts.get(baseId) || 0) + 1);
+    }
     return Object.values(game.cards).filter((card) => {
       const tier = cardTier(card);
-      if (!tier || (card.owner !== "shared" && card.owner !== character.id)) return false;
+      if (!tier || card.upgraded || card.rewardEligible === false || !allowedOwners.has(card.owner)) return false;
       return (counts.get(card.id) || 0) < balance.cardReward.maxCopies;
     });
   }
@@ -196,9 +239,14 @@
   }
 
   function drawRelic(run, rarity) {
-    const pool = Object.values(game.relics).filter((relic) => relic.rarity === rarity && !run.relics.includes(relic.id));
+    const part = currentChapter(run).part;
+    const pool = Object.values(game.relics).filter((relic) =>
+      relic.rarity === rarity && !run.relics.includes(relic.id) && (!relic.parts || relic.parts.includes(part))
+    );
     if (pool.length) return pick(run, pool).id;
-    const repeatable = Object.values(game.relics).filter((relic) => relic.rarity === rarity && relic.allowDuplicate);
+    const repeatable = Object.values(game.relics).filter((relic) =>
+      relic.rarity === rarity && relic.allowDuplicate && (!relic.parts || relic.parts.includes(part))
+    );
     return repeatable.length ? pick(run, repeatable).id : null;
   }
 
@@ -212,10 +260,12 @@
 
     if (["combat", "elite", "boss"].includes(node.type)) {
       run.phase = "battle";
-      const theme = currentTheme(run);
+      const chapter = currentChapter(run);
+      const theme = { ...chapter.theme, setting: chapter.setting };
       if (node.type === "boss") node.enemyId = (theme.chapterBosses || theme.bosses)[run.chapterIndex] || node.enemyId;
       if (!node.enemyId) {
-        const pool = node.type === "elite" ? theme.elites : theme.regulars;
+        const chapterPool = node.type === "elite" ? theme.chapterElites : theme.chapterRegulars;
+        const pool = chapterPool?.[run.chapterIndex] || (node.type === "elite" ? theme.elites : theme.regulars);
         node.enemyId = pick(run, pool);
       }
       const enemyTemplate = game.enemyBook[node.enemyId];
@@ -236,7 +286,16 @@
     if (node.type === "rest") { run.phase = "rest"; return { type: "rest", node }; }
     if (node.type === "event") {
       run.phase = "event";
-      if (!run.events[node.id]) run.events[node.id] = { choice: null, eventId: pick(run, game.eventBook).id, foreignCardId: null };
+      if (!run.events[node.id]) {
+        const part = currentChapter(run).part;
+        const history = new Set([
+          ...(run.eventHistory || []),
+          ...Object.values(run.events || {}).map((entry) => entry.eventId).filter(Boolean)
+        ]);
+        const matching = game.eventBook.filter((event) => (!event.parts || event.parts.includes(part)) && !history.has(event.id));
+        const pool = matching.length ? matching : game.eventBook.filter((event) => !event.parts || event.parts.includes(part));
+        run.events[node.id] = { choice: null, eventId: pick(run, pool).id, foreignCardId: null };
+      }
       return { type: "event", node };
     }
     return null;
@@ -330,20 +389,28 @@
   }
 
   function shopCardPool(run) {
-    return eligibleCards(run).filter((card) => cardTier(card));
+    const character = game.characters.find((entry) => entry.id === run.characterId);
+    return eligibleCards(run).filter((card) => card.owner === character.id && cardTier(card));
   }
 
   function createShop(run, node) {
     if (run.shops[node.id]) return run.shops[node.id];
     const cardPool = shopCardPool(run);
-    const relicPool = Object.values(game.relics).filter((relic) => relic.rarity === "common" && !run.relics.includes(relic.id));
+    const ownedCards = Object.values(game.cards).filter((card) =>
+      card.owner === run.characterId && cardTier(card) && !card.upgraded
+    );
     const stock = [];
-    for (let index = 0; index < 3 && cardPool.length; index += 1) {
-      const card = pick(run, cardPool);
+    for (let index = 0; index < 3 && ownedCards.length; index += 1) {
+      const sourcePool = cardPool.length ? cardPool : ownedCards;
+      const card = pick(run, sourcePool);
       const tier = cardTier(card);
       stock.push({ id: `${node.id}-card-${index}`, kind: "card", itemId: card.id, price: balance.shopPrices[tier], sold: false });
-      cardPool.splice(cardPool.indexOf(card), 1);
+      if (cardPool.includes(card)) cardPool.splice(cardPool.indexOf(card), 1);
     }
+    const part = currentChapter(run).part;
+    const relicPool = Object.values(game.relics).filter((relic) =>
+      relic.rarity === "common" && !run.relics.includes(relic.id) && (!relic.parts || relic.parts.includes(part))
+    );
     for (let index = 0; index < 2 && relicPool.length; index += 1) {
       const relic = pick(run, relicPool);
       stock.push({ id: `${node.id}-relic-${index}`, kind: "relic", itemId: relic.id, price: relic.price, sold: false });
@@ -357,7 +424,7 @@
 
   function getShop(run) {
     const node = getCurrentNode(run);
-    return node && node.type === "shop" ? createShop(run, node) : null;
+    return run.phase === "shop" && node && node.type === "shop" ? createShop(run, node) : null;
   }
 
   function purchase(run, stockId) {
@@ -395,9 +462,17 @@
     run.pendingRemoval = null;
   }
 
+  function finishRest(run, node) {
+    node.visited = true;
+    node.completed = true;
+    run.currentNodeId = node.id;
+    run.activeNodeId = null;
+    run.phase = "map";
+  }
+
   function leaveShop(run) {
     const node = getCurrentNode(run);
-    if (!node || node.type !== "shop") return false;
+    if (run.phase !== "shop" || !node || node.type !== "shop") return false;
     node.completed = true;
     run.phase = "map";
     run.pendingRemoval = null;
@@ -406,33 +481,122 @@
 
   function completeRest(run, choice) {
     const node = getCurrentNode(run);
-    if (!node || node.type !== "rest" || node.completed) return false;
+    if (run.phase !== "rest" || !node || node.type !== "rest" || node.completed) return false;
     if (choice === "heal") run.hp = Math.min(run.maxHp, run.hp + Math.ceil(run.maxHp * 0.3));
-    else if (choice === "gold") run.gold += 20;
+    else if (choice === "gold") {
+      run.gold += 20;
+      run.totalGoldEarned += 20;
+    }
     else return false;
-    node.completed = true;
-    run.phase = "map";
+    finishRest(run, node);
     return true;
   }
 
+  function upgradeRestCard(run, deckIndex) {
+    const node = getCurrentNode(run);
+    if (run.phase !== "rest" || !node || node.type !== "rest" || node.completed || !Number.isInteger(deckIndex)) return false;
+    const cardId = run.deck[deckIndex];
+    const card = game.cards[cardId];
+    if (!card || card.upgraded) return false;
+    const upgradedId = `upgraded-${card.baseId || card.id}`;
+    if (!game.cards[upgradedId]) return false;
+    run.deck[deckIndex] = upgradedId;
+    finishRest(run, node);
+    return true;
+  }
   function completeEvent(run, choice) {
     const node = getCurrentNode(run);
     if (!node || node.type !== "event" || node.completed || run.events[node.id]?.choice) return false;
     const instance = run.events[node.id];
     const event = game.eventBook.find((entry) => entry.id === instance.eventId);
-    if (choice === "foreign-card") {
-      const card = game.cards[instance.foreignCardId];
-      if (!event?.allowForeignCard || !card || card.owner === "shared" || card.owner === run.characterId || !isSafeEventCard(card)) return false;
+    const option = getEventChoices(run).find((entry) => entry.id === choice);
+    if (!event || !option) return false;
+    const effect = option.effect;
+    if (effect.type === "heal") run.hp = Math.min(run.maxHp, run.hp + effect.amount);
+    else if (effect.type === "bloodGold") {
+      run.hp = Math.max(1, run.hp - effect.health);
+      run.gold += effect.gold;
+      run.totalGoldEarned += effect.gold;
+    } else if (effect.type === "payHeal") {
+      if (run.gold < effect.gold) return false;
+      run.gold -= effect.gold;
+      run.hp = Math.min(run.maxHp, run.hp + effect.heal);
+    } else if (effect.type === "gold") {
+      run.gold += effect.amount;
+      run.totalGoldEarned += effect.amount;
+    } else if (effect.type === "gamble") {
+      if (random(run) < effect.chance) {
+        run.gold += effect.gold;
+        run.totalGoldEarned += effect.gold;
+      } else run.hp = Math.max(1, run.hp - effect.health);
+    } else if (effect.type === "card") {
+      const pool = eligibleCards(run);
+      if (!pool.length) return false;
+      const card = pick(run, pool);
       run.deck.push(card.id);
       run.totalCardsAdded += 1;
       run.cardOrigins.push({ cardId: card.id, source: event.id, nodeId: node.id });
-    } else if (choice === "shrine") run.hp = Math.min(run.maxHp, run.hp + 12);
-    else if (choice === "bargain") { run.hp = Math.max(1, run.hp - 6); run.gold += 30; }
-    else return false;
+    } else if (effect.type === "relic") {
+      if (run.gold < effect.cost) return false;
+      const part = currentChapter(run).part;
+      const relicPool = Object.values(game.relics).filter((relic) =>
+        relic.rarity === "common" && !run.relics.includes(relic.id) && (!relic.parts || relic.parts.includes(part))
+      );
+      if (!relicPool.length) return false;
+      run.gold -= effect.cost;
+      const relic = pick(run, relicPool);
+      run.relics.push(relic.id);
+      run.totalRelicsFound += 1;
+    } else if (effect.type === "upgrade") {
+      const choices = run.deck.map((id, index) => {
+        const card = game.cards[id];
+        return card && !card.upgraded && game.cards[`upgraded-${card.baseId || card.id}`] ? index : -1;
+      }).filter((index) => index >= 0);
+      if (!choices.length) return false;
+      const index = pick(run, choices);
+      run.deck[index] = `upgraded-${game.cards[run.deck[index]].baseId || run.deck[index]}`;
+    } else if (effect.type === "foreignCard") {
+      const card = game.cards[instance.foreignCardId];
+      if (!event.allowForeignCard || !card || card.owner === "shared" || card.owner === run.characterId || !isSafeEventCard(card)) return false;
+      run.deck.push(card.id);
+      run.totalCardsAdded += 1;
+      run.cardOrigins.push({ cardId: card.id, source: event.id, nodeId: node.id });
+    } else return false;
     run.events[node.id] = { ...instance, choice };
+    run.eventHistory ||= [];
+    run.eventHistory.push(event.id);
     node.completed = true;
     run.phase = "map";
     return true;
+  }
+
+  function getEventChoices(run) {
+    const event = getEvent(run);
+    if (!event) return [];
+    const options = event.options || [
+      { id: "shrine", label: event.shrine || "숨을 고른다", description: "체력 12 회복", effect: { type: "heal", amount: 12 } },
+      { id: "bargain", label: event.bargain || "표식과 거래한다", description: "체력 6을 잃고 골드 30 획득", effect: { type: "bloodGold", health: 6, gold: 30 } }
+    ];
+    const available = options.filter((option) => {
+      const effect = option.effect;
+      if (effect.type === "card") return eligibleCards(run).length > 0;
+      if (effect.type === "upgrade") return run.deck.some((id) => {
+        const card = game.cards[id];
+        return card && !card.upgraded && Boolean(game.cards[`upgraded-${card.baseId || card.id}`]);
+      });
+      if (effect.type === "relic") {
+        const part = currentChapter(run).part;
+        return run.gold >= effect.cost && Object.values(game.relics).some((relic) =>
+          relic.rarity === "common" && !run.relics.includes(relic.id) && (!relic.parts || relic.parts.includes(part))
+        );
+      }
+      if (effect.type === "payHeal") return run.gold >= effect.gold;
+      if (effect.type === "foreignCard") return Boolean(getEventOffer(run));
+      return true;
+    });
+    return available.length ? available : [
+      { id: "shrine", label: "숨을 고른다", description: "체력 10 회복", effect: { type: "heal", amount: 10 } }
+    ];
   }
 
   function isSafeEventCard(card) {
@@ -472,7 +636,7 @@
   game.Progression = {
     createRun, currentChapter, currentTheme, getCurrentNode, getAvailableNodes, getAllNodes,
     enterNode, ensureVictoryReward, selectRewardCard, skipReward, confirmReward, nextChapter,
-    getShop, purchase, removeCard, cancelRemoval, leaveShop, completeRest, completeEvent,
-    getEvent, getEventOffer, completeBattleLoss, eligibleCards, cardTier
+    getShop, purchase, removeCard, cancelRemoval, leaveShop, completeRest, upgradeRestCard, completeEvent,
+    getEvent, getEventOffer, getEventChoices, completeBattleLoss, eligibleCards, cardTier
   };
 })();

@@ -48,6 +48,7 @@
           payload.retaliation = (payload.retaliation || 0) + effect.amount;
         }
         triggered.push(relicId);
+        state.relicNotice = `유물 발동 · ${relic.name}`;
       }
     }
     return triggered;

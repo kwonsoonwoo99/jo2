@@ -1,13 +1,14 @@
 (() => {
   const game = window.Jojo;
   let selectedDeckIndex = null;
+  let selectedUpgradeIndex = null;
 
   const nodeInfo = {
     start: { icon: "◆", label: "출발", description: "탐험을 시작합니다." },
     combat: { icon: "⚔", label: "전투", description: "일반 적과 전투합니다." },
     elite: { icon: "✦", label: "정예", description: "위험하지만 정예 유물이 기다립니다." },
     shop: { icon: "G", label: "상점", description: "골드로 카드·유물·회복을 구입합니다." },
-    rest: { icon: "+", label: "휴식", description: "체력을 회복하거나 보급 골드를 얻습니다." },
+    rest: { icon: "+", label: "휴식", description: "체력을 회복하거나 카드 한 장을 강화합니다." },
     event: { icon: "?", label: "이벤트", description: "선택에 따라 보상과 대가가 달라집니다." },
     boss: { icon: "★", label: "보스", description: "챕터 보스전입니다." }
   };
@@ -37,7 +38,7 @@
     screen.className = `screen journey-screen map-screen ${theme.className}`;
     document.getElementById("mapChapterLabel").textContent = `CHAPTER ${run.chapterIndex + 1} / 3 · PART ${chapter.part}`;
     document.getElementById("mapTitle").textContent = theme.name;
-    document.getElementById("mapSetting").textContent = theme.setting;
+    document.getElementById("mapSetting").textContent = chapter.setting || theme.setting;
     document.getElementById("mapSeed").textContent = `RUN SEED ${run.seed} · MAP ${run.chapterIndex + 1}`;
     document.getElementById("mapCanvas").style.height = `${Math.max(980, (chapter.map.layerCount + 2) * 74)}px`;
     renderStats(run, "mapStats");
@@ -77,7 +78,7 @@
     relicPanel.hidden = !rewardRelic;
     if (rewardRelic) {
       relicPanel.className = `reward-relic rarity-${rewardRelic.rarity}`;
-      relicPanel.innerHTML = `<span class="relic-icon" aria-hidden="true">${rewardRelic.icon}</span><div><span class="relic-rarity">${rewardRelic.rarity === "boss" ? "보스 유물" : "정예 유물"}</span><h2>${rewardRelic.name}</h2><p>${rewardRelic.description}</p></div><span class="relic-status">확정 시 획득</span>`;
+      relicPanel.innerHTML = `<span class="relic-icon" aria-hidden="true">${rewardRelic.icon}</span><div><span class="relic-rarity">${rewardRelic.rarity === "boss" ? "보스 유물" : "정예 유물"} · ${rewardRelic.origin || "게임 효과"}</span><h2>${rewardRelic.name}</h2><p>${rewardRelic.description}</p></div><span class="relic-status">확정 시 획득</span>`;
     }
     document.getElementById("rewardDeckCount").textContent = `현재 덱 ${run.deck.length}장`;
     document.getElementById("rewardOffers").innerHTML = reward.offers.map((cardId, index) => {
@@ -106,7 +107,7 @@
     }
     if (item.kind === "relic") {
       const relic = game.relics[item.itemId];
-      return { name: relic.name, description: relic.description, kind: "유물", icon: relic.icon };
+      return { name: relic.name, description: `${relic.origin || "게임 효과"} · ${relic.description}`, kind: "유물", icon: relic.icon };
     }
     if (item.kind === "heal") return { name: "응급 치료", description: "체력 20을 회복합니다. 최대 체력을 넘지 않습니다.", kind: "회복", icon: "+" };
     return { name: "카드 제거", description: "덱에서 카드 한 장을 골라 제거합니다.", kind: "정비", icon: "−" };
@@ -155,7 +156,8 @@
   }
 
   function renderChoiceStats(run, targetId) {
-    applyTheme(targetId, run);
+    const screenId = targetId === "restStats" ? "restScreen" : targetId === "eventStats" ? "eventScreen" : targetId;
+    applyTheme(screenId, run);
     renderStats(run, targetId);
   }
 
@@ -165,15 +167,60 @@
     if (!event) return;
     document.getElementById("eventTitle").textContent = event.title;
     document.getElementById("eventDescription").textContent = event.description;
-    document.getElementById("eventShrineTitle").textContent = event.shrine;
-    document.getElementById("eventBargainTitle").textContent = event.bargain;
-    const foreignCard = game.Progression.getEventOffer(run);
-    const foreignChoice = document.getElementById("eventBorrowCard");
-    foreignChoice.hidden = !foreignCard;
-    if (foreignCard) {
-      document.getElementById("eventBorrowTitle").textContent = `${foreignCard.name} 획득`;
-      document.getElementById("eventBorrowDescription").textContent = `${game.characters.find((character) => character.id === foreignCard.owner).name} 전용 · ${foreignCard.description}`;
+    const icons = { heal: "+", bloodGold: "G", payHeal: "−", gold: "G", gamble: "?", card: "▤", relic: "✦", upgrade: "↑", foreignCard: "◇" };
+    document.getElementById("eventChoices").innerHTML = game.Progression.getEventChoices(run).map((option) =>
+      `<button class="choice-card" type="button" data-event-choice="${option.id}"><span class="choice-symbol">${icons[option.effect.type] || "◆"}</span><span class="choice-title">${option.label}</span><span class="choice-description">${option.description}</span></button>`
+    ).join("");
+  }
+
+  function renderRest(run) {
+    renderChoiceStats(run, "restStats");
+    selectedUpgradeIndex = null;
+    const upgradeChoices = document.getElementById("restUpgradeChoices");
+    upgradeChoices.hidden = true;
+    upgradeChoices.innerHTML = run.deck.map((id, index) => {
+      const card = game.cards[id];
+      if (!card) return "";
+      const canUpgrade = Boolean(game.cards[`upgraded-${card.baseId || card.id}`]) && !card.upgraded;
+      return `<button class="deck-row rest-upgrade-choice${canUpgrade ? "" : " unavailable"}" type="button" data-upgrade-index="${index}" ${canUpgrade ? "" : "disabled"} aria-label="${card.name}${canUpgrade ? " 강화 가능" : card.upgraded ? " 이미 강화됨" : " 강화 데이터 없음"}: ${card.description}">
+        <span>${card.name}<small>${card.description}</small></span><span>${canUpgrade ? "강화 가능" : card.upgraded ? "강화됨" : "불가"}</span>
+      </button>`;
+    }).join("");
+    document.getElementById("restUpgradePreview").hidden = true;
+    const confirm = document.getElementById("confirmRestUpgrade");
+    confirm.hidden = true;
+    confirm.disabled = true;
+    document.getElementById("cancelRestUpgrade").hidden = true;
+    if (!run.deck.length) {
+      upgradeChoices.innerHTML = `<p class="rest-upgrade-empty">강화할 수 있는 카드가 없습니다. 회복을 선택해 휴식을 마치세요.</p>`;
     }
+  }
+
+  function selectRestUpgrade(run, index) {
+    const card = game.cards[run.deck[index]];
+    const upgraded = card && game.cards[`upgraded-${card.baseId || card.id}`];
+    if (!card || card.upgraded || !upgraded) return false;
+    selectedUpgradeIndex = index;
+    document.querySelectorAll(".rest-upgrade-choice").forEach((button) => {
+      button.classList.toggle("selected", Number(button.dataset.upgradeIndex) === index);
+    });
+    const preview = document.getElementById("restUpgradePreview");
+    preview.innerHTML = `<h3>강화 효과 확인 · ${card.name}</h3><div><p><b>강화 전</b><br>비용 ${card.cost} · ${card.description}</p><p><b>강화 후</b><br>비용 ${upgraded.cost} · ${upgraded.description}</p></div>`;
+    preview.hidden = false;
+    const confirm = document.getElementById("confirmRestUpgrade");
+    confirm.hidden = false;
+    confirm.disabled = false;
+    document.getElementById("cancelRestUpgrade").hidden = false;
+    return true;
+  }
+
+  function cancelRestUpgrade() {
+    selectedUpgradeIndex = null;
+    document.querySelectorAll(".rest-upgrade-choice").forEach((button) => button.classList.remove("selected"));
+    document.getElementById("restUpgradePreview").hidden = true;
+    document.getElementById("confirmRestUpgrade").hidden = true;
+    document.getElementById("confirmRestUpgrade").disabled = true;
+    document.getElementById("cancelRestUpgrade").hidden = true;
   }
 
   function renderChapterClear(run) {
@@ -199,7 +246,7 @@
     target.innerHTML = (state.relics || []).map((id) => {
       const relic = game.relics[id];
       if (!relic) return "";
-      return `<span class="relic-token rarity-${relic.rarity}" tabindex="0" title="${relic.name}: ${relic.description}" aria-label="${relic.rarity} 유물 ${relic.name}. ${relic.description}"><span>${relic.icon}</span></span>`;
+      return `<button class="relic-token rarity-${relic.rarity}" type="button" data-panel="relics" title="${relic.name} · ${relic.origin || "게임 효과"} · ${relic.description}" aria-label="${relic.rarity} 유물 ${relic.name}. ${relic.origin || "게임 효과"}. ${relic.description}"><span>${relic.icon}</span></button>`;
     }).join("");
     target.hidden = target.childElementCount === 0;
   }
@@ -223,9 +270,10 @@
   }
 
   game.JourneyUI = {
-    renderStats, renderMap, renderReward, renderShop, renderChoiceStats, renderEvent,
-    renderChapterClear, renderVictory, renderGameOver, renderDeck, renderRelicInventory, show,
+    renderStats, renderMap, renderReward, renderShop, renderChoiceStats, renderEvent, renderRest,
+    selectRestUpgrade, cancelRestUpgrade, renderChapterClear, renderVictory, renderGameOver, renderDeck, renderRelicInventory, show,
     get selectedDeckIndex() { return selectedDeckIndex; },
-    set selectedDeckIndex(value) { selectedDeckIndex = value; }
+    set selectedDeckIndex(value) { selectedDeckIndex = value; },
+    get selectedUpgradeIndex() { return selectedUpgradeIndex; }
   };
 })();

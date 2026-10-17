@@ -201,6 +201,62 @@
     "golden-rotation": {
       id: "golden-rotation", name: "황금장방형 회전", type: "attack", label: "회전", cost: 2, rarity: "전용", owner: "johnny", symbol: "◎",
       description: "기본 피해 5. 회전을 최대 3 소모해 각각 피해 4를 더합니다.", effects: [{ type: "damage", amount: 5, consumeResource: "spin", consumeMax: 3, damagePerResource: 4 }]
+    },
+    "ripple-counter": {
+      id: "ripple-counter", name: "파문 반격", type: "skill", label: "파문", cost: 1, rarity: "고급", owner: "jonathan", symbol: "ϟ",
+      description: "방어도 5를 얻고 적을 1턴 약화합니다.", effects: [{ type: "block", amount: 5 }, { type: "weaken", turns: 1 }]
+    },
+    "overdrive-flurry": {
+      id: "overdrive-flurry", name: "오버드라이브 연격", type: "attack", label: "파문", cost: 2, rarity: "고급", owner: "jonathan", symbol: "☼",
+      description: "피해 5를 두 번 줍니다.", effects: [{ type: "multiDamage", amount: 5, hits: 2 }]
+    },
+    "clacker-volley": {
+      id: "clacker-volley", name: "클래커 연사", type: "attack", label: "전술", cost: 1, rarity: "고급", owner: "joseph", symbol: "◉",
+      description: "피해 4를 세 번 줍니다.", effects: [{ type: "multiDamage", amount: 4, hits: 3 }]
+    },
+    "battle-forecast": {
+      id: "battle-forecast", name: "전투의 예감", type: "skill", label: "전술", cost: 1, rarity: "고급", owner: "joseph", symbol: "⌕",
+      description: "방어도 4를 얻고 카드 2장을 뽑습니다.", effects: [{ type: "block", amount: 4 }, { type: "draw", amount: 2 }]
+    },
+    "star-finger": {
+      id: "star-finger", name: "스타 핑거", type: "attack", label: "정밀", cost: 2, rarity: "고급", owner: "jotaro", symbol: "➤",
+      description: "적에게 피해 11을 줍니다.", effects: [{ type: "damage", amount: 11 }]
+    },
+    "ora-counter": {
+      id: "ora-counter", name: "오라 반격 자세", type: "skill", label: "반격", cost: 1, rarity: "고급", owner: "jotaro", symbol: "↯",
+      description: "방어도 5를 얻고 다음 적 공격 뒤 반격 피해 7을 줍니다.", effects: [{ type: "block", amount: 5 }, { type: "armCounter", amount: 7 }]
+    },
+    "crazy-diamond-guard": {
+      id: "crazy-diamond-guard", name: "크레이지 다이아몬드 수복벽", type: "skill", label: "수복", cost: 1, rarity: "고급", owner: "josuke", symbol: "✚",
+      description: "방어도 6과 체력 3을 얻습니다.", effects: [{ type: "block", amount: 6 }, { type: "heal", amount: 3 }]
+    },
+    "dora-counter": {
+      id: "dora-counter", name: "도라라라 대응타", type: "attack", label: "연타", cost: 1, rarity: "고급", owner: "josuke", symbol: "✹",
+      description: "적의 공격 의도라면 피해 8, 다른 의도라면 피해 4를 줍니다.", effects: [{ type: "intentDamage", attack: 8, other: 4 }]
+    },
+    "golden-scorpion": {
+      id: "golden-scorpion", name: "생명의 전갈", type: "attack", label: "생명", cost: 1, rarity: "고급", owner: "giorno", symbol: "❋",
+      description: "적에게 피해 9를 줍니다.", effects: [{ type: "damage", amount: 9 }]
+    },
+    "life-vine": {
+      id: "life-vine", name: "생명의 덩굴", type: "skill", label: "생명", cost: 1, rarity: "고급", owner: "giorno", symbol: "❋",
+      description: "체력 4를 회복하고 생명 1을 창조합니다.", effects: [{ type: "heal", amount: 4 }, { type: "summonLife", amount: 1 }]
+    },
+    "thread-wall": {
+      id: "thread-wall", name: "실의 방벽", type: "skill", label: "실", cost: 1, rarity: "고급", owner: "jolyne", symbol: "⌘",
+      description: "실 1을 만들고 방어도 7을 얻습니다.", effects: [{ type: "gainResource", resource: "thread", amount: 1 }, { type: "block", amount: 7 }]
+    },
+    "string-strike": {
+      id: "string-strike", name: "실의 연속 타격", type: "attack", label: "연타", cost: 1, rarity: "고급", owner: "jolyne", symbol: "✹",
+      description: "피해 4를 두 번 줍니다.", effects: [{ type: "multiDamage", amount: 4, hits: 2 }]
+    },
+    "rolling-shot": {
+      id: "rolling-shot", name: "회전 강철탄", type: "attack", label: "회전", cost: 2, rarity: "고급", owner: "johnny", symbol: "◎",
+      description: "적에게 피해 10을 줍니다.", effects: [{ type: "damage", amount: 10 }]
+    },
+    "spin-shield": {
+      id: "spin-shield", name: "회전 방패", type: "skill", label: "회전", cost: 1, rarity: "고급", owner: "johnny", symbol: "◎",
+      description: "회전 1을 축적하고 방어도 6을 얻습니다.", effects: [{ type: "gainResource", resource: "spin", amount: 1 }, { type: "block", amount: 6 }]
     }
   };
 
@@ -208,6 +264,74 @@
     if (!card.owner) card.owner = "shared";
     if (!card.icon) card.icon = card.symbol;
     if (!card.effects.every((effect) => effect.type)) throw new Error(`Card effect missing type: ${card.id}`);
+  }
+
+  const cardUpgradeData = {
+    strike: { 0: { amount: 3 } }, guard: { 0: { amount: 3 } },
+    "ripple-palm": { 0: { amount: 2 }, 1: { amount: 1 } },
+    "tactical-feint": { 0: { amount: 2 }, 1: { turns: 1 } },
+    "meteor-punch": { 0: { amount: 3 } }, "restorative-blow": { 0: { amount: 2 }, 1: { amount: 2 } },
+    "life-spark": { 0: { amount: 2 }, 1: { amount: 1 } }, "thread-snare": { 0: { amount: 2 }, 1: { amount: 1 } },
+    "spin-shot": { 0: { amount: 2 } }, "quick-jab": { 0: { amount: 2 } },
+    "iron-wall": { 0: { amount: 3 } }, "study-the-foe": { 0: { amount: 2 } },
+    "hamon-surge": { 0: { amount: 2 }, 1: { turns: 1 } }, "field-medic": { 0: { amount: 3 }, 1: { amount: 2 } },
+    "life-seed": { 0: { amount: 1 }, 1: { amount: 1 } }, "finishing-blow": { 0: { amount: 3 } },
+    "spin-breaker": { 0: { amount: 2 }, 1: { amount: 2 } },
+    "ripple-breath": { 0: { amount: 1 }, 1: { amount: 2 } },
+    "sunlight-overdrive": { 0: { amount: 2, damagePerResource: 1 } },
+    "trap-wire": { 0: { amount: 2 }, 1: { amount: 2 } },
+    "counter-shot": { 0: { attack: 2, other: 2 } }, "ora-rush": { 0: { amount: 1 } },
+    "time-stop": { cost: -1 }, "crazy-diamond-repair": { 0: { amount: 2 }, 1: { amount: 2 } },
+    "dora-rush": { 0: { amount: 1, healPercent: 0.05 } },
+    "golden-experience": { 0: { amount: 1 } }, "life-transfer": { 0: { amount: 2 } },
+    "string-bind": { 0: { amount: 1 }, 1: { amount: 2 } },
+    "stone-free-rush": { 0: { amount: 1, damagePerResource: 1 } },
+    "steel-ball": { 0: { amount: 1 }, 1: { amount: 2 } },
+    "golden-rotation": { 0: { amount: 2, damagePerResource: 1 } },
+    "ripple-counter": { 0: { amount: 2 }, 1: { turns: 1 } },
+    "overdrive-flurry": { 0: { amount: 1 } }, "clacker-volley": { 0: { amount: 1 } },
+    "battle-forecast": { 0: { amount: 2 } }, "star-finger": { 0: { amount: 2 } },
+    "ora-counter": { 0: { amount: 2 }, 1: { amount: 2 } },
+    "crazy-diamond-guard": { 0: { amount: 2 }, 1: { amount: 2 } },
+    "dora-counter": { 0: { attack: 2, other: 2 } }, "golden-scorpion": { 0: { amount: 2 } },
+    "life-vine": { 0: { amount: 2 }, 1: { amount: 1 } },
+    "thread-wall": { 0: { amount: 1 }, 1: { amount: 2 } },
+    "string-strike": { 0: { amount: 1 } }, "rolling-shot": { 0: { amount: 2 } },
+    "spin-shield": { 0: { amount: 1 }, 1: { amount: 2 } }
+  };
+  game.cardUpgradeData = cardUpgradeData;
+
+  for (const card of [...Object.values(game.cards)]) {
+    const definition = cardUpgradeData[card.id];
+    if (!definition) continue;
+    const improvements = [];
+    const effectLabels = {
+      damage: "피해", multiDamage: "타격당 피해", block: "방어도", heal: "회복", draw: "드로우",
+      weaken: "약화 지속", gainResource: "자원 획득", armCounter: "반격 피해", summonLife: "생명",
+      consumeLifeHeal: "회복", intentDamage: "조건부 피해"
+    };
+    const propertyLabels = { turns: "지속 턴", attack: "공격 의도 피해", other: "기타 의도 피해", damagePerResource: "자원당 피해", healPercent: "회복 비율" };
+    const effects = card.effects.map((effect, index) => {
+      const upgraded = { ...effect };
+      for (const [property, increase] of Object.entries(definition[index] || {})) {
+        upgraded[property] = (upgraded[property] || 0) + increase;
+        const label = property === "amount" ? effectLabels[effect.type] || "효과 수치" : propertyLabels[property] || property;
+        improvements.push(`${label} +${increase}`);
+      }
+      return upgraded;
+    });
+    const cost = Math.max(0, card.cost + (definition.cost || 0));
+    if (definition.cost) improvements.push(`비용 ${definition.cost > 0 ? "+" : ""}${definition.cost}`);
+    game.cards[`upgraded-${card.id}`] = {
+      ...card,
+      id: `upgraded-${card.id}`,
+      baseId: card.id,
+      name: `${card.name} 강화`,
+      cost,
+      description: `${card.description} 강화 효과: ${improvements.join(", ")}.`,
+      effects,
+      upgraded: true
+    };
   }
 
   game.enemy = {

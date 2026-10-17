@@ -55,20 +55,26 @@
     context.fillRect(7 * size, 11 * size, 2 * size, size);
   }
 
-  function renderSelection(characters) {
+  function renderSelection(characters, profiles = { byCharacter: {} }) {
     const grid = document.getElementById("characterGrid");
     grid.innerHTML = characters.map((character) => {
       const exclusiveCards = character.startingDeck.filter((id) => game.cards[id].owner === character.id).map((id) => game.cards[id].name).join(" · ");
+      const profile = profiles.byCharacter[character.id];
+      const resumable = Boolean(profile?.run);
       return `
-        <button class="character-card" type="button" role="listitem" data-character-id="${character.id}" aria-label="${character.name}, 시작 덱 10장, 전용 카드 ${exclusiveCards}. ${character.passive.name}. 선택하여 탐험 시작">
+        <article class="character-card" role="listitem" aria-label="${character.name}, ${character.part}">
           <canvas class="portrait" width="96" height="96" data-sprite-id="${character.id}" aria-hidden="true"></canvas>
           <span class="character-part">${character.part}</span>
           <span class="character-name">${character.name}</span>
           <span class="character-description">${character.description}</span>
           <span class="character-deck"><i class="ui-icon icon-card" aria-hidden="true"></i>시작 10장 · ${exclusiveCards}</span>
           <span class="character-passive"><b>${character.passive.name}</b><br>${character.passive.description}</span>
-          <span class="select-cue">[ 출전 ]</span>
-        </button>`;
+          <span class="character-save">${resumable ? `저장된 여정 · ${profile.run.chapterIndex + 1}장 · ${profile.run.deck.length}장 덱 · 총 ${profile.statistics?.runs || 0}회 / 승리 ${profile.statistics?.victories || 0}회` : "저장된 여정 없음"}</span>
+          <span class="character-card-actions">
+            <button class="button button-primary" type="button" data-run-action="new" data-character-id="${character.id}">새 여정</button>
+            <button class="button button-quiet" type="button" data-run-action="continue" data-character-id="${character.id}" ${resumable ? "" : "disabled"}>이어하기</button>
+          </span>
+        </article>`;
     }).join("");
 
     for (const character of characters) {
@@ -99,15 +105,27 @@
     document.getElementById("battleMessage").textContent = state.message;
     document.getElementById("playerName").textContent = state.character.name;
     document.getElementById("playerPart").textContent = state.character.part;
-    document.getElementById("playerPassive").innerHTML = `${state.character.passive.name}${state.player.weakTurns > 0 ? ` <span class="status-token status-weaken" title="공격 피해 감소"><i class="ui-icon icon-status-weaken" aria-hidden="true"></i>약화 ${state.player.weakTurns}</span>` : ""}`;
+    document.getElementById("playerPassive").innerHTML = `${state.character.passive.name}${state.player.weakTurns > 0 ? ` <span class="status-token status-weaken" title="공격 피해 감소"><i class="ui-icon icon-status-weaken" aria-hidden="true"></i>약화 ${state.player.weakTurns}</span>` : ""}${state.player.skillLockTurns > 0 ? ` <span class="status-token status-weaken" title="기술 카드 사용 불가"><i class="ui-icon icon-status-weaken" aria-hidden="true"></i>기술 봉쇄</span>` : ""}`;
     document.getElementById("playerBlock").textContent = player.block;
     setHealth(document.getElementById("playerHealthBar"), document.getElementById("playerHealthText"), player);
     drawSprite(document.getElementById("playerSprite"), state.character);
 
     document.getElementById("enemyName").textContent = enemy.name;
-    document.getElementById("enemyCaption").textContent = enemy.caption;
+    const enemyRank = state.encounterType === "boss" ? "" : state.encounterType === "elite" ? "정예 적 · " : "일반 적 · ";
+    document.getElementById("enemyCaption").textContent = `${enemyRank}${enemy.caption}${enemy.special ? ` · 특성: ${enemy.special}` : ""}`;
     document.getElementById("enemyBlock").textContent = enemy.block;
-    document.getElementById("enemyIntent").textContent = `다음 행동 · ${intent.label}`;
+    const intentIcon = { attack: "⚔", heavy: "‼", multi: "✹", drain: "♥", explode: "✹", defend: "▰", prepare: "⌛", weaken: "↓", buff: "↑", timeStop: "◷", regenerate: "✚", mark: "◎", dodge: "◇", seal: "⊘", counter: "↯" }[intent.type] || "◆";
+    const totalDamage = ["attack", "heavy", "multi", "drain", "explode"].includes(intent.type) ? intent.amount * (intent.type === "multi" ? intent.hits : 1) : 0;
+    const statusIntent = intent.type === "weaken" ? `플레이어 약화 ${intent.turns || 1}턴` : "";
+    const intentExtra = totalDamage > 0 ? `${totalDamage} 피해${intent.type === "multi" ? ` · ${intent.hits}회` : ""}`
+      : intent.type === "mark" ? (enemy.intents.some((entry) => entry.type === "explode") ? "표식 후 다음 턴 폭발" : "표식 후 다음 공격 피해 +3")
+      : intent.type === "defend" ? `방어도 +${intent.amount}`
+        : intent.type === "prepare" ? `다음 강타 +${intent.amount} 예고`
+          : intent.type === "buff" ? `공격력 +${intent.amount}`
+            : intent.type === "seal" ? "다음 플레이어 턴 기술 카드 사용 불가"
+              : intent.type === "counter" ? "공격 카드가 명중하면 반격 피해"
+                : statusIntent;
+    document.getElementById("enemyIntent").innerHTML = `<span class="intent-icon" aria-hidden="true">${intentIcon}</span><span><b>다음 행동</b> · ${intent.label}<small>${intentExtra || enemy.special || "특수 행동"}</small></span>`;
     const enemyStatuses = [];
     if (enemy.weakTurns > 0) enemyStatuses.push(["status-weaken", "icon-status-weaken", `약화 ${enemy.weakTurns}`, "공격 피해 감소"]);
     if (enemy.marked) enemyStatuses.push(["status-mark", "icon-status-mark", "표식", "다음 공격에 표식 효과"]);
@@ -122,6 +140,12 @@
     const pipCount = Math.max(player.maxEnergy, player.energy);
     energyPips.innerHTML = Array.from({ length: pipCount }, (_, index) => `<span class="energy-pip${index < player.energy ? " filled" : ""}"></span>`).join("");
     document.getElementById("energyText").textContent = `${player.energy} / ${player.maxEnergy}`;
+    const drawRule = document.getElementById("drawRuleValue");
+    const drawHelp = document.getElementById("drawRuleHelp");
+    const baseDraw = state.lastDraw?.base ?? (state.turn <= 1 ? 5 : 3);
+    const bonusDraw = state.lastDraw?.bonus || 0;
+    drawRule.textContent = bonusDraw ? `${baseDraw}+${bonusDraw}` : String(baseDraw);
+    drawHelp.textContent = `이번 턴: 기본 ${baseDraw}장${bonusDraw ? ` + 효과 ${bonusDraw}장 = 총 ${state.lastDraw.total}장` : ""}. 첫 턴 기본 5장, 이후 턴 기본 3장입니다. 턴 종료 시 손패 3장 초과분만 버립니다.`;
     const resourceLabels = { hamon: ["파문", "icon-hamon"], spin: ["회전", "icon-spin"], thread: ["실", "icon-thread"], life: ["생명", "icon-life"] };
     const resources = document.getElementById("characterResources");
     resources.innerHTML = Object.entries(player.resources || {}).filter(([, amount]) => amount > 0).map(([key, amount]) => {
@@ -137,7 +161,8 @@
         const card = game.cards[cardId];
         const cost = game.Combat.getCardCost(state, card);
         const unavailable = !game.Combat.canPlayCard(state, card);
-        return `<button class="card card-${card.type}" type="button" data-card-index="${index}" ${unavailable ? "disabled" : ""} aria-label="${card.name}, 비용 ${cost}, ${card.description}">
+        const unavailableReason = card.type === "skill" && player.skillLockTurns > 0 ? "기술 카드 봉쇄 중" : "에너지 부족 또는 현재 사용 불가";
+        return `<button class="card card-${card.type}" type="button" data-card-index="${index}" ${unavailable ? "disabled" : ""} title="${unavailable ? unavailableReason : ""}" aria-label="${card.name}, 비용 ${cost}, ${card.description}${unavailable ? `, ${unavailableReason}` : ""}">
           <span class="card-cost">${cost}</span>
           <span class="card-type">${card.label} · ${card.rarity}</span>
           <span class="card-symbol" aria-hidden="true">${card.symbol}</span>
@@ -147,6 +172,14 @@
       }).join("");
     }
 
+    const notice = document.getElementById("relicNotice");
+    if (state.relicNotice) {
+      notice.textContent = state.relicNotice;
+      notice.hidden = false;
+      window.clearTimeout(notice.hideTimer);
+      notice.hideTimer = window.setTimeout(() => { notice.hidden = true; }, 2300);
+      state.relicNotice = "";
+    }
     document.getElementById("endTurn").disabled = Boolean(state.result);
     const overlay = document.getElementById("resultOverlay");
     overlay.hidden = !state.result;
