@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta name="theme-color" content="#171923">
+	<title>JoJo: 운명의 카드</title>
+	<link rel="stylesheet" href="css/jojo.css">
+	<script defer src="js/data.js"></script>
+	<script defer src="js/adventureData.js"></script>
+	<script defer src="js/progression.js"></script>
+	<script defer src="js/save.js"></script>
+	<script defer src="js/relicSystem.js"></script>
+	<script defer src="js/combat.js"></script>
+	<script defer src="js/ui.js"></script>
+	<script defer src="js/journeyUI.js"></script>
+	<script defer src="js/main.js"></script>
+</head>
+<body>
+	<main class="game-frame">
+		<section class="screen title-screen" id="titleScreen" aria-labelledby="gameTitle">
+			<header class="title-header">
+				<p class="eyebrow">7개의 혈통 · 하나의 운명</p>
+				<h1 id="gameTitle"><span>JOJO</span><br>운명의 카드</h1>
+				<p class="title-copy">파문, 스탠드, 회전. 당신의 전투 방식을 선택하세요.</p>
+				<div class="prototype-tag">PIXEL ROGUELIKE <span>프로토타입 01</span></div>
+			</header>
+
+			<section class="roster-section" aria-labelledby="rosterTitle">
+				<div class="section-heading">
+					<div>
+						<p class="eyebrow">PLAYER SELECT</p>
+						<h2 id="rosterTitle">운명의 주인공을 고르세요</h2>
+					</div>
+					<p class="section-note">캐릭터를 선택하면 기본 전투가 시작됩니다.</p>
+				</div>
+				<div class="character-grid" id="characterGrid" role="list"></div>
+			</section>
+			<footer class="title-footer"><span>TURN-BASED CARD BATTLE</span><span>키보드: 1-5 카드 사용 · E 턴 종료</span></footer>
+		</section>
+
+		<section class="screen battle-screen" id="battleScreen" aria-labelledby="battleTitle" hidden>
+			<header class="battle-header">
+				<div class="battle-brand">
+					<p class="eyebrow" id="battleAct">ACT 01 · 운명의 조우</p>
+					<h1 id="battleTitle">전투</h1>
+				</div>
+				<div class="battle-header-center">
+					<span class="battle-state-label">TURN <b id="turnNumber">1</b></span>
+					<span class="battle-location" id="battleLocation">석가면의 방</span>
+				</div>
+				<div class="battle-actions"><span class="battle-gold" id="battleGold"><i class="ui-icon icon-coin" aria-hidden="true"></i>0 G</span><button class="button button-quiet" id="backToSelect" type="button">탐험 포기</button></div>
+			</header>
+
+			<div class="battle-message" id="battleMessage" aria-live="polite">전투가 시작됩니다.</div>
+			<div class="battle-relics" id="battleRelics" aria-label="보유 유물"></div>
+
+			<section class="arena" aria-label="전투 상황">
+				<article class="fighter fighter-player">
+					<div class="fighter-topline"><span>PLAYER</span><span class="fighter-part" id="playerPart"></span></div>
+					<div class="fighter-main">
+						<canvas class="fighter-sprite" id="playerSprite" width="96" height="96" aria-hidden="true"></canvas>
+						<div class="fighter-info">
+							<h2 id="playerName"></h2>
+							<div class="health-label"><span><i class="ui-icon icon-heart" aria-hidden="true"></i> 체력</span><b id="playerHealthText"></b></div>
+							<div class="meter"><span id="playerHealthBar"></span></div>
+							<div class="combat-stats"><span><i class="ui-icon icon-shield" aria-hidden="true"></i> 방어도 <b id="playerBlock">0</b></span><span id="playerPassive"></span></div>
+							<div class="resource-row" id="characterResources"></div>
+						</div>
+					</div>
+					<div class="energy-row"><span><i class="ui-icon icon-energy" aria-hidden="true"></i> ENERGY</span><div class="energy-pips" id="energyPips"></div><b id="energyText"></b></div>
+				</article>
+
+				<div class="versus" aria-hidden="true"><span>VS</span><i></i></div>
+
+				<article class="fighter fighter-enemy">
+					<div class="fighter-topline"><span>OPPONENT</span><span class="intent" id="enemyIntent"></span></div>
+					<div class="fighter-main">
+						<canvas class="fighter-sprite enemy-sprite" id="enemySprite" width="96" height="96" aria-hidden="true"></canvas>
+						<div class="fighter-info">
+							<h2 id="enemyName"></h2>
+							<div class="health-label"><span><i class="ui-icon icon-heart" aria-hidden="true"></i> 체력</span><b id="enemyHealthText"></b></div>
+							<div class="meter enemy-meter"><span id="enemyHealthBar"></span></div>
+							<div class="combat-stats"><span><i class="ui-icon icon-shield" aria-hidden="true"></i> 방어도 <b id="enemyBlock">0</b></span><span class="status-text" id="enemyStatus"></span></div>
+						</div>
+					</div>
+					<div class="enemy-caption" id="enemyCaption"></div>
+				</article>
+			</section>
+
+			<section class="battle-lower">
+				<section class="hand-section" aria-labelledby="handTitle">
+					<div class="hand-heading">
+						<div><p class="eyebrow">YOUR HAND</p><h2 id="handTitle">손패</h2></div>
+						<button class="button button-primary" id="endTurn" type="button">턴 종료 <kbd>E</kbd></button>
+					</div>
+					<div class="hand" id="hand" aria-live="polite"></div>
+					<p class="hand-hint">카드를 눌러 사용하세요. 숫자 키 1-5로도 사용할 수 있습니다.</p>
+				</section>
+			</section>
+
+			<section class="result-overlay" id="resultOverlay" aria-live="assertive" hidden>
+				<div class="result-panel">
+					<p class="eyebrow" id="resultEyebrow">BATTLE RESULT</p>
+					<h2 id="resultTitle"></h2>
+					<p id="resultText"></p>
+					<div class="result-actions">
+						<button class="button button-primary" id="retryBattle" type="button">다시 전투</button>
+						<button class="button button-quiet" id="resultBack" type="button">캐릭터 선택</button>
+					</div>
+				</div>
+			</section>
+		</section>
+
+		<section class="screen journey-screen map-screen" id="mapScreen" hidden>
+			<header class="journey-header">
+				<div><p class="eyebrow" id="mapChapterLabel">CHAPTER 1</p><h1 id="mapTitle">운명의 여정</h1><p class="journey-subtitle" id="mapSetting"></p></div>
+				<div class="run-stats" id="mapStats"></div>
+			</header>
+			<div class="map-intro"><span id="mapSeed"></span><span>현재 위치에서 연결된 노드를 선택하세요.</span></div>
+			<div class="map-legend"><span><i class="node-dot combat-dot"></i>전투</span><span><i class="node-dot elite-dot"></i>정예</span><span><i class="node-dot shop-dot"></i>상점</span><span><i class="node-dot rest-dot"></i>휴식</span><span><i class="node-dot event-dot"></i>이벤트</span><span><i class="node-dot boss-dot"></i>보스</span></div>
+			<div class="map-scroll"><div class="map-canvas" id="mapCanvas"><svg id="mapLines" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"></svg><div class="map-nodes" id="mapNodes"></div></div></div>
+		</section>
+
+		<section class="screen journey-screen reward-screen" id="rewardScreen" hidden>
+			<header class="journey-header"><div><p class="eyebrow">BATTLE REWARD</p><h1>전투 보상</h1><p class="journey-subtitle" id="rewardEnemy"></p></div><div class="run-stats" id="rewardStats"></div></header>
+			<div class="reward-banner"><span class="reward-coin ui-icon icon-coin" aria-hidden="true"></span><span>획득 골드</span><strong id="rewardGold">+0</strong><span>보상은 이번 전투에서 한 번만 지급됩니다.</span></div>
+			<article class="reward-relic" id="rewardRelic" hidden></article>
+			<div class="reward-heading"><div><p class="eyebrow">CARD REWARD</p><h2>카드 한 장을 선택하세요</h2></div><span id="rewardDeckCount"></span></div>
+			<div class="reward-offers" id="rewardOffers"></div>
+			<p class="selection-message" id="rewardMessage" aria-live="polite">보상 카드 하나를 선택하거나 건너뛰세요.</p>
+			<div class="screen-actions"><button class="button button-quiet" id="skipReward" type="button">카드 건너뛰기</button><button class="button button-primary" id="confirmReward" type="button" disabled>보상 확정</button></div>
+		</section>
+
+		<section class="screen journey-screen shop-screen" id="shopScreen" hidden>
+			<header class="journey-header"><div><p class="eyebrow">ROADSIDE MERCHANT</p><h1>여행자의 상점</h1><p class="journey-subtitle">필요한 것을 고르고, 준비가 끝나면 맵으로 돌아가세요.</p></div><div class="run-stats" id="shopStats"></div></header>
+			<div class="shop-layout"><section><div class="reward-heading"><div><p class="eyebrow">FOR SALE</p><h2>판매 목록</h2></div></div><div class="shop-stock" id="shopStock"></div></section>
+				<aside class="shop-deck-panel"><p class="eyebrow">YOUR DECK</p><h2>현재 덱 <span id="shopDeckCount"></span></h2><div class="deck-list" id="shopDeck"></div><div class="remove-panel" id="removePanel" hidden><p>제거할 카드를 선택한 뒤 확인하세요.</p><div class="remove-actions"><button class="button button-quiet" id="cancelRemove" type="button">취소</button><button class="button button-primary" id="confirmRemove" type="button" disabled>카드 제거 확정</button></div></div></aside>
+			</div>
+			<div class="screen-actions"><button class="button button-quiet" id="leaveShop" type="button">상점 나가기</button></div>
+		</section>
+
+		<section class="screen journey-screen choice-screen" id="restScreen" hidden>
+			<header class="journey-header"><div><p class="eyebrow">SAFE REST</p><h1>잠시 숨을 고르세요</h1><p class="journey-subtitle">휴식처에서 다음 전투를 준비합니다.</p></div><div class="run-stats" id="restStats"></div></header>
+			<div class="choice-grid"><button class="choice-card" id="restHeal" type="button"><span class="choice-symbol">+</span><span class="choice-title">호흡 정돈</span><span class="choice-description">최대 체력의 30%를 회복합니다.</span></button><button class="choice-card" id="restGold" type="button"><span class="choice-symbol">G</span><span class="choice-title">보급품 정리</span><span class="choice-description">골드 20을 챙깁니다.</span></button></div>
+		</section>
+
+		<section class="screen journey-screen choice-screen" id="eventScreen" hidden>
+			<header class="journey-header"><div><p class="eyebrow">A STRANGE ENCOUNTER</p><h1 id="eventTitle">이상한 흔적</h1><p class="journey-subtitle" id="eventDescription">갈림길에서 낡은 표식과 작은 제단을 발견했습니다.</p></div><div class="run-stats" id="eventStats"></div></header>
+				<div class="choice-grid"><button class="choice-card" id="eventShrine" type="button"><span class="choice-symbol">+</span><span class="choice-title" id="eventShrineTitle">제단에 기도한다</span><span class="choice-description" id="eventShrineDescription">체력을 12 회복합니다.</span></button><button class="choice-card" id="eventBargain" type="button"><span class="choice-symbol">G</span><span class="choice-title" id="eventBargainTitle">표식과 거래한다</span><span class="choice-description" id="eventBargainDescription">체력 6을 잃고 골드 30을 얻습니다.</span></button><button class="choice-card event-card-choice" id="eventBorrowCard" type="button" hidden><span class="choice-symbol">✦</span><span class="choice-title" id="eventBorrowTitle">기억의 파편</span><span class="choice-description" id="eventBorrowDescription"></span></button></div>
+		</section>
+
+		<section class="screen journey-screen ending-screen" id="chapterScreen" hidden>
+			<p class="eyebrow">CHAPTER CLEAR</p><div class="ending-emblem">★</div><h1 id="chapterClearTitle">챕터를 돌파했습니다</h1><p id="chapterClearText"></p><div class="run-stats" id="chapterStats"></div><button class="button button-primary" id="nextChapter" type="button">다음 챕터로</button>
+		</section>
+
+		<section class="screen journey-screen ending-screen" id="victoryScreen" hidden>
+			<p class="eyebrow">JOURNEY COMPLETE</p><div class="ending-emblem">★</div><h1>운명을 넘어섰습니다</h1><p id="victoryText"></p><div class="final-stats" id="finalStats"></div><button class="button button-primary" id="victoryHome" type="button">타이틀로</button>
+		</section>
+
+		<section class="screen journey-screen ending-screen defeat-screen" id="gameOverScreen" hidden>
+			<p class="eyebrow">JOURNEY OVER</p><div class="ending-emblem">×</div><h1>여정이 끝났습니다</h1><p id="gameOverText"></p><div class="final-stats" id="gameOverStats"></div><button class="button button-primary" id="gameOverHome" type="button">다시 시작</button>
+		</section>
+	</main>
+</body>
+</html>
